@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Holds both real secrets: LLM_API_KEY and VOCAB_ACCESS_KEY. Never commit it.
+.env
+.DS_Store

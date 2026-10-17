@@ -1,0 +1,8 @@
+# Runtime only. Test-only packages live in requirements-dev.txt so a deployment does not
+# install them.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+# The classifier posts with this directly. (It is also what fastapi.testclient needs:
+# starlette now wants httpx2 rather than httpx.)
+httpx2>=2.13

@@ -1,0 +1,37 @@
+# Render Blueprint. In the Render dashboard: New -> Blueprint -> pick this repo.
+# Render reads this file, prompts for the one secret it cannot know, and generates the
+# other, so the only thing to type by hand is the LLM key.
+#
+# startCommand runs uvicorn directly and must stay that way. Gunicorn's default
+# --timeout 30 kills a worker mid-request, and a full-length extraction here takes ~28s;
+# plain uvicorn has no request timeout, and Render's proxy does not impose one either.
+services:
+  - type: web
+    name: vocab-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # Must stay unauthenticated, and does in app/main.py: the gate is on the API router
+    # only. An authenticated health check would fail and Render would never go live.
+    healthCheckPath: /health
+    envVars:
+      - key: VOCAB_CLASSIFIER
+        value: openai_compatible
+      - key: LLM_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai
+      - key: LLM_MODEL
+        value: gemini-3.8-flash
+      # Required on this model: without it a 15-item extraction does not finish inside
+      # 600s, because the model keeps thinking. Leave it out for a non-thinking provider,
+      # which would reject the field outright.
+      - key: LLM_REASONING_EFFORT
+        value: low
+      # sync: false means Render asks for this at create time instead of storing it here.
+      # The key never enters this file or the repository.
+      - key: LLM_API_KEY
+        sync: false
+      # Render generates a random secret, so nobody has to invent one. Copy it from the
+      # service's Environment tab to call the API:  -H "X-API-Key: <value>"
+      - key: VOCAB_ACCESS_KEY
+        generateValue: true
