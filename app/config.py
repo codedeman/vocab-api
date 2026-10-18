@@ -23,6 +23,7 @@ DOTENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 ENV_VARS = (
     "VOCAB_CLASSIFIER",
     "VOCAB_ACCESS_KEY",
+    "DATABASE_URL",
     "LLM_BASE_URL",
     "LLM_MODEL",
     "LLM_API_KEY",
@@ -40,6 +41,9 @@ class Settings:
     #: as ``llm_api_key``, which is this service's own key for the LLM provider.
     #: repr=False for the same reason as llm_api_key: it is a secret.
     vocab_access_key: str | None = field(default=None, repr=False)
+    #: Postgres connection string for the word cache. Unset means the cache is off, which
+    #: only makes lookups slower. repr=False: the string carries the database password.
+    database_url: str | None = field(default=None, repr=False)
     llm_base_url: str | None = None
     llm_model: str | None = None
     # repr=False so a logged or echoed Settings can never leak the key.
@@ -87,6 +91,7 @@ def load_settings() -> Settings:
     return Settings(
         classifier=_clean("VOCAB_CLASSIFIER"),
         vocab_access_key=_clean("VOCAB_ACCESS_KEY"),
+        database_url=_clean("DATABASE_URL"),
         llm_base_url=_clean("LLM_BASE_URL"),
         llm_model=_clean("LLM_MODEL"),
         llm_api_key=_clean("LLM_API_KEY"),

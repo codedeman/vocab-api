@@ -85,3 +85,11 @@ class ExtractResponse(ClassifierPayload):
         min_length=1,
         description="Provider that produced these items, e.g. 'openai_compatible' or 'mock'.",
     )
+    cache: Literal["hit", "miss", "off", "error"] = Field(
+        ...,
+        description=(
+            "Where the items came from: 'hit' served from the word cache with no LLM call, "
+            "'miss' freshly generated and stored, 'off' no cache configured, 'error' the "
+            "cache failed and the LLM answered instead."
+        ),
+    )

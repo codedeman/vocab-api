@@ -35,3 +35,8 @@ services:
       # service's Environment tab to call the API:  -H "X-API-Key: <value>"
       - key: VOCAB_ACCESS_KEY
         generateValue: true
+      # The word cache. Render's free disk is not persistent, so this points at an external
+      # Postgres (Neon). sync: false because the string contains the database password.
+      # Without it the service runs with no cache; lookups are then just slower.
+      - key: DATABASE_URL
+        sync: false

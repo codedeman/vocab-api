@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api import vocabulary
+from app.cache import get_cache
 from app.classifier import ClassifierError, get_classifier
 from app.config import load_settings
 from app.security import access_control_enabled, require_access_key, validate_access_control
@@ -28,15 +29,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = load_settings()
     get_classifier()
     validate_access_control(settings)
-    # Neither key here, ever: this line ends up in logs and terminals. access_control
-    # reports on/OFF only — enough to spot an accidentally open deployment, and nothing
-    # that helps anyone reading the logs get in.
+    cache = get_cache(settings)
+    if cache is not None:
+        # A DATABASE_URL that was set but cannot be reached is a misconfiguration: fail
+        # here rather than discover it as a stream of per-request warnings.
+        cache.init_schema()
+    # No secret here, ever (neither key, nor the database URL): this line ends up in logs
+    # and terminals. access_control and cache report on/OFF only — enough to spot an
+    # accidentally open deployment, and nothing that helps anyone reading the logs get in.
     logger.info(
-        "vocab-api: classifier=%s model=%s base_url=%s access_control=%s",
+        "vocab-api: classifier=%s model=%s base_url=%s access_control=%s cache=%s",
         settings.classifier,
         settings.llm_model or "-",
         settings.llm_base_url or "-",
         "on" if access_control_enabled(settings) else "OFF",
+        "on" if cache is not None else "OFF",
     )
     yield
 

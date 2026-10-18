@@ -6,3 +6,5 @@ pydantic>=2.7
 # The classifier posts with this directly. (It is also what fastapi.testclient needs:
 # starlette now wants httpx2 rather than httpx.)
 httpx2>=2.13
+# Word cache (Postgres). Sync driver, matching the sync route.
+psycopg[binary]>=3.2
