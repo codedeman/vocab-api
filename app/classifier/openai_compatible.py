@@ -19,7 +19,6 @@ import httpx2
 
 from app.classifier.base import ClassifierError
 from app.config import Settings
-from app.providers import check_key_matches_url
 from app.schemas import ClassifierPayload, VocabularyItem
 from app.taxonomy import CEFR_LEVELS, MainCategory
 
@@ -82,9 +81,6 @@ class OpenAICompatibleClassifier:
         assert settings.llm_base_url is not None
         assert settings.llm_model is not None
         assert settings.llm_api_key is not None
-        # Startup, not first request: a key pasted over a stale LLM_BASE_URL is otherwise
-        # only discovered as a 401 once someone calls the API.
-        check_key_matches_url(settings.llm_api_key, settings.llm_base_url)
         self._base_url = settings.llm_base_url.rstrip("/")
         self._model = settings.llm_model
         self._api_key = settings.llm_api_key

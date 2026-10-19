@@ -21,7 +21,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from app.providers import detect_provider
+from app.providers import detect_provider, stale_host
 
 #: Project root: config.py lives in app/, so one level up.
 DOTENV_PATH = Path(__file__).resolve().parent.parent / ".env"
@@ -60,6 +60,10 @@ class Settings:
     #: Which known host the key was recognised as, e.g. "openai". ``None`` for a key we
     #: cannot place, which is fine as long as LLM_BASE_URL and LLM_MODEL are set.
     llm_provider: str | None = None
+    #: LLM_* variables that were set but ignored because they belong to another known
+    #: host (``llm_stale_host``) than the key does. Names only — never values.
+    llm_ignored: tuple[str, ...] = ()
+    llm_stale_host: str | None = None
 
 
 def _load_dotenv(path: Path | None = None) -> None:
@@ -103,6 +107,8 @@ def load_settings() -> Settings:
     model = _clean("LLM_MODEL")
     reasoning_effort = _clean("LLM_REASONING_EFFORT")
     provider = None
+    ignored: tuple[str, ...] = ()
+    old_host = None
 
     # The mock never talks to a host, so its key (if any) is not interpreted at all.
     if classifier in (None, "openai_compatible"):
@@ -112,6 +118,21 @@ def load_settings() -> Settings:
             # A recognised key is an explicit choice of a real provider, so it may stand
             # in for VOCAB_CLASSIFIER. It can never select the mock.
             classifier = classifier or "openai_compatible"
+            old_host = stale_host(preset, base_url) if base_url else None
+            if old_host is not None:
+                # The key was changed and the previous provider's settings were not. The
+                # key is the newest, most deliberate choice, so it wins; the endpoint,
+                # model and thinking budget all belonged to the old host and go with it.
+                ignored = tuple(
+                    name
+                    for name, value in (
+                        ("LLM_BASE_URL", base_url),
+                        ("LLM_MODEL", model),
+                        ("LLM_REASONING_EFFORT", reasoning_effort),
+                    )
+                    if value is not None
+                )
+                base_url = model = reasoning_effort = None
             if base_url is None:
                 base_url = preset.base_url
                 # Only alongside the preset's own endpoint: a custom LLM_BASE_URL may be a
@@ -131,4 +152,6 @@ def load_settings() -> Settings:
         llm_api_key=api_key,
         llm_reasoning_effort=reasoning_effort,
         llm_provider=provider,
+        llm_ignored=ignored,
+        llm_stale_host=old_host,
     )

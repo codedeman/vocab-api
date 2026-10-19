@@ -200,10 +200,11 @@ host it belongs to ([app/providers.py](app/providers.py)), and the rest is fille
 | `sk-ant-` | refused at startup: Anthropic has no adapter here | | |
 
 Anything you set explicitly wins. The model and reasoning effort are only filled in when
-`LLM_BASE_URL` is too — a custom endpoint gets neither guessed for it. A key that clearly
-belongs to a different known host than `LLM_BASE_URL` (an OpenAI key sent to Gemini, say,
-because the old URL was left behind) stops the server at startup with the fix in the
-message, instead of turning into a 401 on the first request. DeepSeek keys also start with
+`LLM_BASE_URL` is too — a custom endpoint gets neither guessed for it. If the key clearly
+belongs to a different known host than `LLM_BASE_URL` — an OpenAI key with Gemini's URL
+left behind from before — the key wins: the stale `LLM_BASE_URL`, `LLM_MODEL` and
+`LLM_REASONING_EFFORT` are ignored, and the startup log names them in a warning so you can
+delete them. An unknown host (Ollama, a proxy) is always taken as written. DeepSeek keys also start with
 `sk-`, so DeepSeek needs `LLM_BASE_URL` and `LLM_MODEL` set; that pairing is allowed.
 
 **Neither required variable falls back to anything you didn't ask for.** Leave

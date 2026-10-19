@@ -1,9 +1,13 @@
 """Provider detection from the key: pasting a different LLM_API_KEY is enough to switch."""
 
+import logging
+
 import pytest
+from fastapi.testclient import TestClient
 
 from app.classifier import MockClassifier, OpenAICompatibleClassifier, get_classifier
-from app.config import Settings, load_settings
+from app.config import load_settings
+from app.main import app
 from app.providers import GEMINI, GROQ, OPENAI, OPENROUTER, detect_provider
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
@@ -109,33 +113,63 @@ def test_unrecognised_key_alone_still_fails_loudly(monkeypatch: pytest.MonkeyPat
         get_classifier()
 
 
-def _classifier(key: str, base_url: str) -> OpenAICompatibleClassifier:
-    return OpenAICompatibleClassifier(
-        Settings(
-            classifier="openai_compatible",
-            llm_base_url=base_url,
-            llm_model="any-model",
-            llm_api_key=key,
-        )
-    )
+def test_key_wins_over_another_providers_leftover_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Render case: a new OpenAI key, with Gemini's URL, model and budget still set."""
+    monkeypatch.setenv("VOCAB_CLASSIFIER", "openai_compatible")
+    monkeypatch.setenv("LLM_API_KEY", "sk-proj-test")
+    monkeypatch.setenv("LLM_BASE_URL", GEMINI_URL)
+    monkeypatch.setenv("LLM_MODEL", "gemini-3.8-flash")
+    monkeypatch.setenv("LLM_REASONING_EFFORT", "low")
+
+    settings = load_settings()
+
+    assert settings.llm_provider == "openai"
+    assert settings.llm_base_url == "https://api.openai.com/v1"
+    assert settings.llm_model == "gpt-4o-mini"
+    assert settings.llm_reasoning_effort is None
+    assert settings.llm_ignored == ("LLM_BASE_URL", "LLM_MODEL", "LLM_REASONING_EFFORT")
+    assert settings.llm_stale_host == "gemini"
+    assert isinstance(get_classifier(), OpenAICompatibleClassifier)
 
 
-def test_key_for_another_known_host_is_refused_at_startup() -> None:
-    """The trap: a new OpenAI key pasted while the old Gemini URL is still set."""
-    with pytest.raises(ValueError) as excinfo:
-        _classifier("sk-proj-test", GEMINI_URL)
+def test_leftover_settings_are_named_in_a_startup_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("VOCAB_CLASSIFIER", "openai_compatible")
+    monkeypatch.setenv("LLM_API_KEY", "sk-proj-secret-value")
+    monkeypatch.setenv("LLM_BASE_URL", GEMINI_URL)
 
-    message = str(excinfo.value)
-    assert "openai" in message
-    assert "gemini" in message
-    assert "LLM_BASE_URL" in message
-    assert "sk-proj-test" not in message
+    with caplog.at_level(logging.WARNING, logger="vocab-api"), TestClient(app):
+        pass
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("ignoring LLM_BASE_URL left over from gemini" in w for w in warnings)
+    assert all("sk-proj-secret-value" not in r.getMessage() for r in caplog.records)
 
 
-def test_sk_key_on_deepseek_is_allowed() -> None:
-    _classifier("sk-test", "https://api.deepseek.com/v1")
+def test_sk_key_on_deepseek_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VOCAB_CLASSIFIER", "openai_compatible")
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.deepseek.com/v1")
+    monkeypatch.setenv("LLM_MODEL", "deepseek-chat")
+
+    settings = load_settings()
+
+    assert settings.llm_base_url == "https://api.deepseek.com/v1"
+    assert settings.llm_model == "deepseek-chat"
+    assert settings.llm_ignored == ()
 
 
-def test_any_key_on_an_unknown_host_is_allowed() -> None:
-    _classifier("sk-test", "http://localhost:11434/v1")
-    _classifier("AIzaTest", "https://proxy.example.com/v1")
+def test_any_key_on_an_unknown_host_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VOCAB_CLASSIFIER", "openai_compatible")
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LLM_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("LLM_MODEL", "llama3.1")
+
+    settings = load_settings()
+
+    assert settings.llm_base_url == "http://localhost:11434/v1"
+    assert settings.llm_model == "llama3.1"
+    assert settings.llm_ignored == ()

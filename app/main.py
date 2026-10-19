@@ -34,6 +34,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # A DATABASE_URL that was set but cannot be reached is a misconfiguration: fail
         # here rather than discover it as a stream of per-request warnings.
         cache.init_schema()
+    if settings.llm_ignored:
+        # Logged here, once per start — load_settings also runs on every /health call.
+        logger.warning(
+            "vocab-api: LLM_API_KEY is a %s key; ignoring %s left over from %s. "
+            "Delete them to silence this.",
+            settings.llm_provider,
+            ", ".join(settings.llm_ignored),
+            settings.llm_stale_host,
+        )
     # No secret here, ever (neither key, nor the database URL): this line ends up in logs
     # and terminals. access_control and cache report on/OFF only — enough to spot an
     # accidentally open deployment, and nothing that helps anyone reading the logs get in.

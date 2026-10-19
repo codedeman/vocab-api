@@ -99,28 +99,17 @@ def host_provider(base_url: str) -> str | None:
     return KNOWN_HOSTS.get(urlparse(base_url).hostname or "")
 
 
-def check_key_matches_url(api_key: str, base_url: str) -> None:
-    """Refuse a key that clearly belongs to a different known host than ``base_url``.
+def stale_host(preset: ProviderPreset, base_url: str) -> str | None:
+    """Name the known host ``base_url`` points at if it cannot be where ``preset``'s key
+    belongs, else ``None``.
 
-    This is the trap the presets alone cannot close: an ``LLM_BASE_URL`` left over from
-    the previous provider overrides the preset, so a freshly pasted key gets sent to the
-    wrong host and the failure only shows up as a 401 on the first request. An unknown
-    host — Ollama, vLLM, a proxy — is never refused, since any key may be right there.
-
-    Raises:
-        ValueError: naming both providers and the fix.
+    That combination is left-over configuration: an ``LLM_BASE_URL`` from the previous
+    provider, still set after a new key was pasted. An unknown host — Ollama, vLLM, a
+    proxy — is never stale, since any key may be right there.
     """
-    try:
-        preset = detect_provider(api_key)
-    except ValueError:
-        return  # detect_provider already reported it where the settings were loaded.
     host = host_provider(base_url)
-    if preset is None or host is None or host == preset.name:
-        return
+    if host is None or host == preset.name:
+        return None
     if host in COMPATIBLE_HOSTS.get(preset.name, frozenset()):
-        return
-    raise ValueError(
-        f"LLM_API_KEY looks like a {preset.name} key, but LLM_BASE_URL points at {host} "
-        f"({base_url}). Remove LLM_BASE_URL and LLM_MODEL to configure {preset.name} "
-        f"from the key automatically, or set them to match the key."
-    )
+        return None
+    return host
