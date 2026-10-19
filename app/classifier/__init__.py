@@ -32,8 +32,10 @@ def get_classifier() -> Classifier:
     if not settings.classifier:
         raise ValueError(
             "VOCAB_CLASSIFIER is not set, so no classifier was chosen. "
-            "For Gemini set VOCAB_CLASSIFIER=openai_compatible plus LLM_BASE_URL, "
-            "LLM_MODEL and LLM_API_KEY (see .env.example). "
+            "For a real LLM, set LLM_API_KEY to a Gemini, OpenAI, OpenRouter or Groq key "
+            "and everything else is configured from it; for any other host set "
+            "VOCAB_CLASSIFIER=openai_compatible plus LLM_BASE_URL, LLM_MODEL and "
+            "LLM_API_KEY (see .env.example). "
             "For the offline stand-in set VOCAB_CLASSIFIER=mock explicitly."
         )
     factory = PROVIDERS.get(settings.classifier)

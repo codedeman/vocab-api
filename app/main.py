@@ -38,8 +38,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # and terminals. access_control and cache report on/OFF only — enough to spot an
     # accidentally open deployment, and nothing that helps anyone reading the logs get in.
     logger.info(
-        "vocab-api: classifier=%s model=%s base_url=%s access_control=%s cache=%s",
+        "vocab-api: classifier=%s provider=%s model=%s base_url=%s access_control=%s cache=%s",
         settings.classifier,
+        settings.llm_provider or "-",
         settings.llm_model or "-",
         settings.llm_base_url or "-",
         "on" if access_control_enabled(settings) else "OFF",

@@ -18,15 +18,11 @@ services:
     envVars:
       - key: VOCAB_CLASSIFIER
         value: openai_compatible
-      - key: LLM_BASE_URL
-        value: https://generativelanguage.googleapis.com/v1beta/openai
-      - key: LLM_MODEL
-        value: gemini-3.8-flash
-      # Required on this model: without it a 15-item extraction does not finish inside
-      # 600s, because the model keeps thinking. Leave it out for a non-thinking provider,
-      # which would reject the field outright.
-      - key: LLM_REASONING_EFFORT
-        value: low
+      # No LLM_BASE_URL, LLM_MODEL or LLM_REASONING_EFFORT on purpose: they are filled in
+      # from the key (app/providers.py), so switching between Gemini, OpenAI, OpenRouter
+      # and Groq is just pasting a different LLM_API_KEY. Pinning them here would bring
+      # back the old trap — a new key sent to the previous provider's endpoint. Add them
+      # only to override, e.g. for DeepSeek or a different model.
       # sync: false means Render asks for this at create time instead of storing it here.
       # The key never enters this file or the repository.
       - key: LLM_API_KEY

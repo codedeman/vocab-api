@@ -1,10 +1,14 @@
 """Runtime configuration, read from ``.env`` and the environment.
 
 Deliberately provider-neutral: the same ``LLM_*`` variables point the service at Gemini,
-DeepSeek, OpenAI or a local model, so switching provider never means editing code.
+DeepSeek, OpenAI or a local model, so switching provider never means editing code. For a
+host with a recognisable key (``app/providers.py``), ``LLM_API_KEY`` alone is enough: the
+endpoint, model and thinking budget are filled in from the key, and any of them can still
+be set explicitly to override.
 
-Neither ``VOCAB_CLASSIFIER`` nor ``VOCAB_ACCESS_KEY`` has a default; both must be set
-explicitly and the server refuses to start otherwise. For the classifier, a silent
+``VOCAB_ACCESS_KEY`` has no default, and ``VOCAB_CLASSIFIER`` has none either except
+``openai_compatible`` when a recognised LLM key is present — never the mock. The server
+refuses to start otherwise. For the classifier, a silent
 fallback to the mock is what made the service return fake data while looking healthy.
 For the access key, a silent fallback to "open" would publish an endpoint backed by a
 real LLM key to anyone who found the URL.
@@ -16,6 +20,8 @@ a missing ``.env`` is not an error, so a host that injects env vars works as-is.
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from app.providers import detect_provider
 
 #: Project root: config.py lives in app/, so one level up.
 DOTENV_PATH = Path(__file__).resolve().parent.parent / ".env"
@@ -51,6 +57,9 @@ class Settings:
     #: Thinking budget for reasoning models, e.g. "low". Sent only when set, because
     #: providers without a thinking mode reject the field outright.
     llm_reasoning_effort: str | None = None
+    #: Which known host the key was recognised as, e.g. "openai". ``None`` for a key we
+    #: cannot place, which is fine as long as LLM_BASE_URL and LLM_MODEL are set.
+    llm_provider: str | None = None
 
 
 def _load_dotenv(path: Path | None = None) -> None:
@@ -88,12 +97,38 @@ def _clean(name: str) -> str | None:
 def load_settings() -> Settings:
     """Build Settings from ``.env`` plus the current environment."""
     _load_dotenv()
+    classifier = _clean("VOCAB_CLASSIFIER")
+    api_key = _clean("LLM_API_KEY")
+    base_url = _clean("LLM_BASE_URL")
+    model = _clean("LLM_MODEL")
+    reasoning_effort = _clean("LLM_REASONING_EFFORT")
+    provider = None
+
+    # The mock never talks to a host, so its key (if any) is not interpreted at all.
+    if classifier in (None, "openai_compatible"):
+        preset = detect_provider(api_key)
+        if preset is not None:
+            provider = preset.name
+            # A recognised key is an explicit choice of a real provider, so it may stand
+            # in for VOCAB_CLASSIFIER. It can never select the mock.
+            classifier = classifier or "openai_compatible"
+            if base_url is None:
+                base_url = preset.base_url
+                # Only alongside the preset's own endpoint: a custom LLM_BASE_URL may be a
+                # host that rejects the field, so it gets no thinking budget unasked.
+                if reasoning_effort is None:
+                    reasoning_effort = preset.reasoning_effort
+                # Likewise the model: the preset's default only makes sense on its host.
+                if model is None:
+                    model = preset.model
+
     return Settings(
-        classifier=_clean("VOCAB_CLASSIFIER"),
+        classifier=classifier,
         vocab_access_key=_clean("VOCAB_ACCESS_KEY"),
         database_url=_clean("DATABASE_URL"),
-        llm_base_url=_clean("LLM_BASE_URL"),
-        llm_model=_clean("LLM_MODEL"),
-        llm_api_key=_clean("LLM_API_KEY"),
-        llm_reasoning_effort=_clean("LLM_REASONING_EFFORT"),
+        llm_base_url=base_url,
+        llm_model=model,
+        llm_api_key=api_key,
+        llm_reasoning_effort=reasoning_effort,
+        llm_provider=provider,
     )

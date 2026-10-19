@@ -180,16 +180,35 @@ gitignored.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VOCAB_CLASSIFIER` | **none — required** | `openai_compatible` or `mock` |
+| `VOCAB_CLASSIFIER` | `openai_compatible` if `LLM_API_KEY` is recognised, else **required** | `openai_compatible` or `mock` |
 | `VOCAB_ACCESS_KEY` | **none — required** | Secret callers must send as `X-API-Key`, or `disabled` to serve openly. See [Authentication](#authentication) |
 | `DATABASE_URL` | unset | Postgres for the [word cache](#word-cache); unset = cache off |
-| `LLM_BASE_URL` | unset | Provider endpoint, e.g. `https://api.deepseek.com/v1` |
-| `LLM_API_KEY` | unset | Key for whichever host — one generic variable, not per-vendor |
-| `LLM_MODEL` | unset | e.g. `gemini-3.8-flash`, `deepseek-chat`, `gpt-4o-mini` |
-| `LLM_REASONING_EFFORT` | unset | Thinking budget on reasoning models. **Set it to `low` for Gemini**; leave unset elsewhere |
+| `LLM_API_KEY` | unset | Key for whichever host — one generic variable, not per-vendor. Its prefix picks the provider (see below) |
+| `LLM_BASE_URL` | from the key | Override the endpoint, e.g. `https://api.deepseek.com/v1` |
+| `LLM_MODEL` | from the key | Override the model, e.g. `gpt-4.1-mini` |
+| `LLM_REASONING_EFFORT` | from the key | Thinking budget. `low` for Gemini automatically; set it yourself only for another thinking model |
 
-**Neither required variable has a default.** Leave `VOCAB_CLASSIFIER` unset and the server
-refuses to start, naming what to set; an unregistered value fails the same way, with the
+**Switching provider is pasting a different `LLM_API_KEY`.** The key's prefix says which
+host it belongs to ([app/providers.py](app/providers.py)), and the rest is filled in:
+
+| Key starts with | Provider | Model | Reasoning effort |
+|---|---|---|---|
+| `AIza` or `AQ.` | Gemini | `gemini-3.8-flash` | `low` |
+| `sk-or-` | OpenRouter | `openai/gpt-4o-mini` | — |
+| `gsk_` | Groq | `llama-3.3-70b-versatile` | — |
+| `sk-` | OpenAI | `gpt-4o-mini` | — |
+| `sk-ant-` | refused at startup: Anthropic has no adapter here | | |
+
+Anything you set explicitly wins. The model and reasoning effort are only filled in when
+`LLM_BASE_URL` is too — a custom endpoint gets neither guessed for it. A key that clearly
+belongs to a different known host than `LLM_BASE_URL` (an OpenAI key sent to Gemini, say,
+because the old URL was left behind) stops the server at startup with the fix in the
+message, instead of turning into a 401 on the first request. DeepSeek keys also start with
+`sk-`, so DeepSeek needs `LLM_BASE_URL` and `LLM_MODEL` set; that pairing is allowed.
+
+**Neither required variable falls back to anything you didn't ask for.** Leave
+`VOCAB_CLASSIFIER` unset with no recognisable `LLM_API_KEY` and the server refuses to start,
+naming what to set — it never quietly picks the mock; an unregistered value fails the same way, with the
 list of available providers. `VOCAB_ACCESS_KEY` behaves identically. Both failures happen at
 startup, not on the first request.
 
@@ -206,14 +225,12 @@ whether you are looking at real data:
 ### Running against Gemini
 
 ```bash
-VOCAB_CLASSIFIER=openai_compatible
-LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
-LLM_MODEL=gemini-3.8-flash
 LLM_API_KEY=            # get one at https://aistudio.google.com/apikey
-LLM_REASONING_EFFORT=low
 ```
 
-**`LLM_REASONING_EFFORT=low` is not optional here.** `gemini-3.8-flash` is a thinking
+That alone gives you the endpoint, `gemini-3.8-flash` and `LLM_REASONING_EFFORT=low`.
+**The `low` budget is not optional here** — if you override `LLM_BASE_URL` for Gemini, set
+it yourself. `gemini-3.8-flash` is a thinking
 model, and without a budget it reasons about a 20-word extraction until it runs out of
 one. Measured on the same paragraph: **~28s for 15 items with `low`, and not finished
 after 600s without it.** No timeout setting fixes that; the request never completes.
@@ -387,22 +404,14 @@ one new file plus one line in `PROVIDERS` — no change to `api/vocabulary.py` o
 
 Gemini, DeepSeek, OpenAI, Groq, Together, OpenRouter, Ollama and vLLM all speak the same
 OpenAI-compatible `/chat/completions` format, so **one** `openai_compatible` adapter covers
-all of them — only `LLM_BASE_URL` and `LLM_MODEL` change:
+all of them. For Gemini, OpenAI, OpenRouter and Groq the key alone is enough (see
+[Configuration](#configuration)); for any other host, set the endpoint and model:
 
 ```bash
-# DeepSeek
-VOCAB_CLASSIFIER=openai_compatible
+# DeepSeek — its sk- keys would otherwise be read as OpenAI
 LLM_BASE_URL=https://api.deepseek.com/v1
 LLM_API_KEY=sk-...
 LLM_MODEL=deepseek-chat
-```
-
-```bash
-# OpenAI — same adapter
-VOCAB_CLASSIFIER=openai_compatible
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_API_KEY=sk-...
-LLM_MODEL=gpt-4o-mini
 ```
 
 Anthropic would need its own adapter because its wire format differs, so it is not
@@ -426,6 +435,7 @@ vocab-api/
 ├── app/
 │   ├── main.py              # FastAPI app, startup fail-fast, GET /health, router wiring
 │   ├── config.py            # Settings from .env + env; both keys marked repr=False
+│   ├── providers.py         # Key prefix -> endpoint/model/effort presets, key/URL mismatch check
 │   ├── cache.py             # Postgres word cache (the only code that touches the driver)
 │   ├── security.py          # X-API-Key dependency + startup check on VOCAB_ACCESS_KEY
 │   ├── schemas.py           # ExtractRequest, WordFamilyMember, VocabularyItem, ClassifierPayload, ExtractResponse
@@ -443,6 +453,7 @@ vocab-api/
 │   ├── test_access_key.py
 │   ├── test_cache.py
 │   ├── test_openai_compatible.py
+│   ├── test_providers.py
 │   └── test_classifier_registry.py
 ├── render.yaml              # Render Blueprint: build/start command, health check, env vars
 ├── .python-version          # 3.12 — Render's default is newer and breaks compiled wheels

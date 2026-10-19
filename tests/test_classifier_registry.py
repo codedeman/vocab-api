@@ -145,7 +145,7 @@ def test_gemini_configuration_builds_the_expected_url(monkeypatch: pytest.Monkey
     monkeypatch.setenv("VOCAB_CLASSIFIER", "openai_compatible")
     monkeypatch.setenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
     monkeypatch.setenv("LLM_MODEL", "gemini-3.8-flash")
-    monkeypatch.setenv("LLM_API_KEY", "sk-test-value")
+    monkeypatch.setenv("LLM_API_KEY", "AIza-test-value")
 
     classifier = get_classifier()
 
